@@ -35,6 +35,7 @@ import java.io.InputStream;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 
 import javax.net.SocketFactory;
 import javax.net.ssl.SSLSocketFactory;
@@ -223,7 +224,7 @@ public class ApnsConnectionImpl implements ApnsConnection {
         }
         return socket;
     }
-    int DELAY_IN_MS = 1000;
+    int DELAY_IN_MS = 1500;
     private static final int RETRIES = 3;
 
     public synchronized void sendMessage(ApnsNotification m) throws NetworkIOException {
@@ -237,6 +238,7 @@ public class ApnsConnectionImpl implements ApnsConnection {
             try {
                 attempts++;
                 Socket socket = socket();
+                socket.setSoTimeout(5000);
                 socket.getOutputStream().write(m.marshall());
                 socket.getOutputStream().flush();
                 cacheNotification(m);
@@ -250,6 +252,10 @@ public class ApnsConnectionImpl implements ApnsConnection {
                 break;
             } catch (Exception e) {
                 Utilities.close(socket);
+                if (e instanceof SocketTimeoutException) {
+                	logger.info("socket timeout.. sleep 10sec");
+                    Utilities.sleep(10000);
+                }
                 socket = null;
                 if (attempts >= RETRIES) {
                     logger.error("Couldn't send message after " + RETRIES + " retries." + m, e);
@@ -261,7 +267,7 @@ public class ApnsConnectionImpl implements ApnsConnection {
                 if (attempts != 1) {
                     // Do not spam the log files when the APNS server closed the socket (due to a
                     // bad token, for example), only log when on the second retry.
-                    logger.info("Failed to send message " + m + "... trying again after delay", e);
+                    logger.info("Failed to send message " + m + "... trying again after delay");
                     Utilities.sleep(DELAY_IN_MS);
                 }
             }
